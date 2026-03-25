@@ -12,7 +12,11 @@
 			let pkgs = nixpkgs.legacyPackages.${system};
 			in {
 				devShell = pkgs.mkShell { 
-					buildInputs = [ pkgs.go pkgs.air ]; 
+					buildInputs = [ 
+							pkgs.go 
+							pkgs.air
+							pkgs.sqlite
+					 ]; 
 
 					shellHook = ''
 						if [ ! -f .env ]; then
