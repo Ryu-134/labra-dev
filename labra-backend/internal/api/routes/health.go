@@ -1,11 +1,11 @@
 package routes
 
 import (
-	"net/http"
-
 	"labra-backend/internal/api/handlers"
+
+	"github.com/go-fuego/fuego"
 )
 
-func HealthRoute(mux *http.ServeMux) {
-	mux.HandleFunc("/health", handlers.HandleHealth)
+func HealthRoute(s *fuego.Server) {
+	fuego.GetStd(s, "/health", handlers.HandleHealth)
 }

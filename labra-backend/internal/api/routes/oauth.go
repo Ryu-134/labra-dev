@@ -1,12 +1,12 @@
 package routes
 
 import (
-	"net/http"
-
 	"labra-backend/internal/api/handlers"
+
+	"github.com/go-fuego/fuego"
 )
 
-func Oauth(mux *http.ServeMux) {
-	mux.HandleFunc("/login", handlers.LoginHandler)
-	mux.HandleFunc("/callback", handlers.CallbackHandler)
+func Oauth(s *fuego.Server) {
+	fuego.PostStd(s, "/login", handlers.LoginHandler)
+	fuego.GetStd(s, "/callback", handlers.CallbackHandler)
 }

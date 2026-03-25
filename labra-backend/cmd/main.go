@@ -2,14 +2,16 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/http"
+
+	"labra-backend/internal/api/routes"
 
 	"github.com/lpernett/godotenv"
-	"labra-backend/internal/api/routes"
+	"github.com/go-fuego/fuego" 	
+
 )
 
 const PORT = "8080"
+const HOST = "localhost"
 
 func main() {
 	err := godotenv.Load("./../.env")
@@ -17,17 +19,18 @@ func main() {
 		fmt.Println(err)
 	}
 
-	mux := http.NewServeMux()
+	listenOn := HOST + ":" + PORT
 
-	routes.HealthRoute(mux)
-	routes.Oauth(mux)
+	s := fuego.NewServer(
+		fuego.WithAddr(listenOn),
+	)
+
+	routes.HealthRoute(s)
+	routes.Oauth(s)
+
 	// TODO: probably switch this to TLS
 
-	listenOn := "localhost" + ":" + PORT
 
 	fmt.Println("Server starting on :", listenOn)
-	err = http.ListenAndServe(listenOn, mux)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	s.Run()	
 }
