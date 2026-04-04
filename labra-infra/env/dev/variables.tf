@@ -1,165 +1,218 @@
-#  keep these core names here so we can reuse the same file shape across environments
 variable "project_name" {
-  description = "Project identifier used in resource names and tags"
-  type        = string
-  default     = "labra-infra"
+  type    = string
+  default = "labra-infra"
 }
 
 variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "dev"
+  type    = string
+  default = "dev"
 }
 
 variable "component" {
-  description = "Component suffix used by labels module"
-  type        = string
-  default     = "platform"
+  type    = string
+  default = "platform"
 }
 
-#  keep region and owner explicit so we can trace resources without guessing
 variable "aws_region" {
-  description = "AWS region for this environment"
-  type        = string
-  default     = "us-west-2"
-}
-
-variable "owner" {
-  description = "Owner tag value"
-  type        = string
-  default     = "cpsc465-infra"
-}
-
-variable "extra_tags" {
-  description = "Additional tags to apply to all resources"
-  type        = map(string)
-  default     = {}
-}
-
-#  keep roadmap markers on resources so when either of you checks AWS you can map infra to milestone fast
-variable "roadmap_phase" {
-  description = "Roadmap phase label applied as a resource tag"
-  type        = string
-  default     = "Phase 4"
-}
-
-variable "roadmap_version" {
-  description = "Roadmap version label applied as a resource tag"
-  type        = string
-  default     = "Ver 1.0"
-}
-
-#  use this toggle only for the one-time backend bootstrap apply
-variable "bootstrap_state_backend" {
-  description = "When true create S3 and DynamoDB backend resources"
-  type        = bool
-  default     = false
-}
-
-variable "state_bucket_name" {
-  description = "Globally unique S3 bucket name for Terraform state"
-  type        = string
-}
-
-variable "state_lock_table_name" {
-  description = "Optional DynamoDB lock table name"
-  type        = string
-  default     = null
-}
-
-variable "state_bucket_force_destroy" {
-  description = "Whether the state bucket can be force-destroyed"
-  type        = bool
-  default     = false
-}
-
-#  keep app contract fields here because backend/frontend both care about this identity
-variable "app_name" {
-  description = "Logical app name tag used by runtime resources"
-  type        = string
-  default     = "demo-app"
-}
-
-variable "build_type" {
-  description = "Build type for this environment"
-  type        = string
-  default     = "static"
+  type    = string
+  default = "us-west-2"
 
   validation {
-    condition     = var.build_type == "static"
-    error_message = "Phase 4 scope only supports build_type = static"
+    condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]+$", var.aws_region))
+    error_message = "aws_region must look like us-west-2."
   }
 }
 
-#  kept only the static knobs we actually need through Phase 4
+variable "owner" {
+  type    = string
+  default = "cpsc465-infra"
+}
+
+variable "extra_tags" {
+  type    = map(string)
+  default = {}
+}
+
+variable "roadmap_phase" {
+  type    = string
+  default = "Phase 4"
+}
+
+variable "roadmap_version" {
+  type    = string
+  default = "Ver 1.0"
+}
+
+variable "bootstrap_state_backend" {
+  type    = bool
+  default = false
+}
+
+variable "state_bucket_name" {
+  type = string
+}
+
+variable "state_lock_table_name" {
+  type    = string
+  default = null
+}
+
+variable "state_bucket_force_destroy" {
+  type    = bool
+  default = false
+}
+
+variable "app_name" {
+  type    = string
+  default = "demo-app"
+}
+
+variable "build_type" {
+  type    = string
+  default = "static"
+}
+
 variable "static_site_bucket_name" {
-  description = "Optional explicit static site bucket name override"
-  type        = string
-  default     = null
+  type    = string
+  default = null
 }
 
 variable "static_default_root_object" {
-  description = "Default CloudFront root object for static app"
-  type        = string
-  default     = "index.html"
+  type    = string
+  default = "index.html"
 }
 
 variable "static_enable_spa_routing" {
-  description = "Serve index.html for 403 and 404 to support SPA routes"
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "static_price_class" {
-  description = "CloudFront price class for static runtime"
-  type        = string
-  default     = "PriceClass_100"
+  type    = string
+  default = "PriceClass_100"
 }
 
 variable "static_force_destroy" {
-  description = "Allow force destroy for static bucket during teardown"
-  type        = bool
-  default     = false
+  type    = bool
+  default = false
 }
 
 variable "static_release_prefix" {
-  description = "S3 prefix for versioned static release artifacts"
-  type        = string
-  default     = "releases/"
+  type    = string
+  default = "releases/"
 }
 
 variable "static_release_retention_days" {
-  description = "Retention in days for current static release objects"
-  type        = number
-  default     = 90
+  type    = number
+  default = 90
 }
 
 variable "static_noncurrent_retention_days" {
-  description = "Retention in days for noncurrent static release object versions"
-  type        = number
-  default     = 30
+  type    = number
+  default = 30
 }
 
 variable "static_enable_alarms" {
-  description = "Create baseline CloudFront alarms for static runtime"
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "static_alarm_period_seconds" {
-  description = "CloudWatch period for static alarms"
-  type        = number
-  default     = 300
+  type    = number
+  default = 300
+
+  validation {
+    condition     = var.static_alarm_period_seconds > 0
+    error_message = "static_alarm_period_seconds must be > 0."
+  }
 }
 
 variable "static_alarm_evaluation_periods" {
-  description = "CloudWatch evaluation periods for static alarms"
-  type        = number
-  default     = 1
+  type    = number
+  default = 1
 }
 
 variable "static_cf_5xx_rate_threshold" {
-  description = "CloudFront 5xx error rate threshold"
-  type        = number
-  default     = 1
+  type    = number
+  default = 1
+}
+
+variable "runner_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "runner_launch_type" {
+  type    = string
+  default = "FARGATE"
+
+  validation {
+    condition     = var.runner_launch_type == "FARGATE"
+    error_message = "runner_launch_type must be FARGATE."
+  }
+}
+
+variable "runner_task_cpu" {
+  type    = number
+  default = 1024
+}
+
+variable "runner_task_memory" {
+  type    = number
+  default = 2048
+}
+
+variable "runner_ephemeral_storage_gib" {
+  type    = number
+  default = 21
+}
+
+variable "runner_timeout_seconds" {
+  type    = number
+  default = 3600
+
+  validation {
+    condition     = var.runner_timeout_seconds > 0
+    error_message = "runner_timeout_seconds must be > 0."
+  }
+}
+
+variable "runner_container_image" {
+  type    = string
+  default = "public.ecr.aws/docker/library/node:20-alpine"
+
+  validation {
+    condition     = length(trimspace(var.runner_container_image)) > 0
+    error_message = "runner_container_image cannot be empty."
+  }
+}
+
+variable "runner_assign_public_ip" {
+  type    = bool
+  default = false
+}
+
+variable "runner_subnet_ids" {
+  type    = list(string)
+  default = []
+}
+
+variable "runner_security_group_ids" {
+  type    = list(string)
+  default = []
+}
+
+variable "runner_log_retention_days" {
+  type    = number
+  default = 14
+}
+
+variable "runner_execution_role_name" {
+  type    = string
+  default = "labra-runner-execution-role"
+}
+
+variable "runner_task_role_name" {
+  type    = string
+  default = "labra-runner-task-role"
 }
