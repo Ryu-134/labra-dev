@@ -19,4 +19,3 @@
 3. Normal deploy flow
    - set `bootstrap_state_backend = false`
    - run `terraform plan` and `terraform apply`
-

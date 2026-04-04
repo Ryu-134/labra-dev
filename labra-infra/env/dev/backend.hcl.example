@@ -1,16 +1,5 @@
-#  copy this to backend.hcl and then run terraform init -reconfigure -backend-config=backend.hcl
-
-#  set this to the state bucket created by state-bootstrap
-bucket = "replace-me-labra-infra-dev-tfstate"
-
-#  keep one stable state object path per env
-key = "env/dev/terraform.tfstate"
-
-#  keep region explicit so init does not guess wrong
-region = "us-west-2"
-
-#  point this at the Dynamo lock table from state-bootstrap
+bucket         = "replace-me-labra-infra-dev-tfstate"
+key            = "env/dev/terraform.tfstate"
+region         = "us-west-2"
 dynamodb_table = "labra-infra-dev-platform-terraform-locks"
-
-#  keep encryption on for state objects
-encrypt = true
+encrypt        = true

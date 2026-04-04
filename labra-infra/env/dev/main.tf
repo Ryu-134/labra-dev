@@ -1,5 +1,4 @@
 terraform {
-  #  keep this aligned with root constraints so nobody gets odd version mismatch errors
   required_version = ">= 1.6.0"
 
   required_providers {
@@ -8,64 +7,47 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  #  keep local state first until one of us runs the backend bootstrap flow
-}
-
-locals {
-  #  build provider tags from vars so frontend/backend can see clean ownership and phase metadata in AWS
-  provider_default_tags = merge(
-    {
-      Project      = var.project_name
-      Environment  = var.environment
-      Owner        = var.owner
-      ManagedBy    = "Terraform"
-      Version      = var.roadmap_version
-      RoadmapPhase = var.roadmap_phase
-    },
-    var.extra_tags
-  )
 }
 
 provider "aws" {
   region = var.aws_region
 
   default_tags {
-    tags = local.provider_default_tags
+    tags = local.tags
   }
 }
 
-#  keep labels central so both of you can trust naming/tag patterns in outputs and logs
-module "labels" {
-  source = "../../modules/labels"
-
-  project_name    = var.project_name
-  environment     = var.environment
-  component       = var.component
-  owner           = var.owner
-  extra_tags      = var.extra_tags
-  roadmap_phase   = var.roadmap_phase
-  roadmap_version = var.roadmap_version
+locals {
+  component_suffix = var.component == "" ? "" : "-${var.component}"
+  resource_prefix  = "${var.project_name}-${var.environment}${local.component_suffix}"
+  tags = merge({
+    Project      = var.project_name
+    Environment  = var.environment
+    Owner        = var.owner
+    ManagedBy    = "Terraform"
+    Version      = var.roadmap_version
+    RoadmapPhase = var.roadmap_phase
+  }, var.extra_tags)
 }
 
-#  only use this when we need to create shared remote state infra for the first time
 module "state_bootstrap" {
   count  = var.bootstrap_state_backend ? 1 : 0
   source = "../../modules/state-bootstrap"
 
-  name_prefix       = module.labels.resource_prefix
+  name_prefix       = local.resource_prefix
   state_bucket_name = var.state_bucket_name
   lock_table_name   = var.state_lock_table_name
   force_destroy     = var.state_bucket_force_destroy
-  tags              = module.labels.tags
+  tags              = local.tags
 }
 
-#  kept this focused on what we need through Phase 4 for static deploys
 module "static_runtime" {
   source = "../../modules/static_runtime"
 
-  name_prefix               = module.labels.resource_prefix
+  name_prefix               = local.resource_prefix
   app_name                  = var.app_name
+  build_type                = var.build_type
+  region                    = var.aws_region
   bucket_name               = var.static_site_bucket_name
   default_root_object       = var.static_default_root_object
   price_class               = var.static_price_class
@@ -78,5 +60,5 @@ module "static_runtime" {
   alarm_period_seconds      = var.static_alarm_period_seconds
   alarm_evaluation_periods  = var.static_alarm_evaluation_periods
   cf_5xx_rate_threshold     = var.static_cf_5xx_rate_threshold
-  tags                      = module.labels.tags
+  tags                      = local.tags
 }

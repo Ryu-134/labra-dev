@@ -1,25 +1,27 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_region" "current" {}
+
 data "aws_cloudfront_cache_policy" "caching_optimized" {
   name = "Managed-CachingOptimized"
 }
 
 locals {
-  #  derive a deterministic bucket name so backend and frontend can rely on stable naming without hardcoding
   default_bucket_name = substr(
     lower(replace("${var.name_prefix}-${data.aws_caller_identity.current.account_id}-site", "_", "-")),
     0,
     63
   )
+  effective_region = coalesce(var.region, data.aws_region.current.name)
   site_bucket_name = coalesce(var.bucket_name, local.default_bucket_name)
   origin_id        = "${var.name_prefix}-static-origin"
   module_tags = merge(var.tags, {
     AppName   = var.app_name
-    BuildType = "static"
+    BuildType = var.build_type
+    Region    = local.effective_region
   })
 }
 
-#  store static build output and release snapshots in this bucket
 resource "aws_s3_bucket" "site" {
   bucket        = local.site_bucket_name
   force_destroy = var.force_destroy
@@ -47,7 +49,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "site" {
   }
 }
 
-#  keep this bucket private and only let CloudFront read through OAC
 resource "aws_s3_bucket_public_access_block" "site" {
   bucket = aws_s3_bucket.site.id
 
@@ -65,7 +66,6 @@ resource "aws_cloudfront_origin_access_control" "site" {
   signing_protocol                  = "sigv4"
 }
 
-#  expose this distribution as the live URL surface both of you show and consume in your flows
 resource "aws_cloudfront_distribution" "site" {
   enabled             = true
   default_root_object = var.default_root_object
@@ -119,6 +119,29 @@ resource "aws_cloudfront_distribution" "site" {
 
 data "aws_iam_policy_document" "site_bucket_policy" {
   statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+    actions = [
+      "s3:*"
+    ]
+    resources = [
+      aws_s3_bucket.site.arn,
+      "${aws_s3_bucket.site.arn}/*"
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+
+  statement {
     sid    = "AllowCloudFrontReadOnly"
     effect = "Allow"
     actions = [
@@ -145,7 +168,6 @@ resource "aws_s3_bucket_policy" "site" {
   policy = data.aws_iam_policy_document.site_bucket_policy.json
 }
 
-#  keep lifecycle rules scoped to our release prefix so old release data cleans up without manual work
 resource "aws_s3_bucket_lifecycle_configuration" "site" {
   bucket = aws_s3_bucket.site.id
 
