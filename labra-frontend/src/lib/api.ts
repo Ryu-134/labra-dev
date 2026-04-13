@@ -9,6 +9,7 @@ export type App = {
 	root_dir?: string;
 	site_url?: string;
 	auto_deploy_enabled: boolean;
+	current_release_id?: number;
 	created_at: number;
 	updated_at: number;
 };
@@ -25,6 +26,7 @@ export type Deployment = {
 	branch?: string;
 	site_url?: string;
 	failure_reason?: string;
+	release_id?: number;
 	created_at: number;
 	updated_at: number;
 	started_at?: number;
@@ -56,6 +58,7 @@ export type HealthDeploymentSummary = {
 	trigger_type: string;
 	site_url?: string;
 	commit_sha?: string;
+	release_id?: number;
 	updated_at: number;
 };
 
@@ -65,6 +68,7 @@ export type AppHealthSummary = {
 	repo_full_name: string;
 	branch: string;
 	current_url: string;
+	current_release_id?: number;
 	latest_deploy_status: string;
 	latest_deploy?: HealthDeploymentSummary;
 	last_successful_deploy?: HealthDeploymentSummary;
@@ -73,9 +77,82 @@ export type AppHealthSummary = {
 		failure_count: number;
 		total_count: number;
 		success_rate: number;
+		average_duration_seconds: number;
+		latest_duration_seconds: number;
+		total_duration_seconds: number;
+		rollback_count: number;
+		last_deploy_at: number;
+		last_success_at: number;
+		last_failure_at: number;
 	};
 	alarm_state?: string;
 	health_indicator: string;
+};
+
+export type ReleaseVersion = {
+	id: number;
+	app_id: number;
+	deployment_id: number;
+	version_number: number;
+	artifact_path: string;
+	artifact_checksum?: string;
+	is_retained: boolean;
+	created_at: number;
+};
+
+export type RollbackEvent = {
+	id: number;
+	app_id: number;
+	user_id: number;
+	from_release_id?: number;
+	to_release_id: number;
+	deployment_id: number;
+	reason?: string;
+	created_at: number;
+};
+
+export type LogQueryHit = {
+	log_id: number;
+	deployment_id: number;
+	log_level: string;
+	message: string;
+	created_at: number;
+	status: string;
+	trigger_type: string;
+	release_id?: number;
+};
+
+export type ObservabilitySummary = {
+	app_id: number;
+	current_release_id?: number;
+	release_count: number;
+	status_counts: Record<string, number>;
+	trigger_counts: Record<string, number>;
+	recent_durations: Array<{
+		deployment_id: number;
+		status: string;
+		trigger_type: string;
+		duration_seconds: number;
+		finished_at: number;
+	}>;
+	recent_failures: Deployment[];
+	recent_rollbacks: RollbackEvent[];
+	health: {
+		success_count: number;
+		failure_count: number;
+		total_count: number;
+		success_rate: number;
+		average_duration_seconds: number;
+		latest_duration_seconds: number;
+		total_duration_seconds: number;
+		rollback_count: number;
+		last_deploy_at: number;
+		last_success_at: number;
+		last_failure_at: number;
+	};
+	health_indicator: string;
+	alarm_state?: string;
+	cloudwatch_enabled: boolean;
 };
 
 export const backendBaseURL = import.meta.env.VITE_BACKEND_BASE_URL ?? '/api';

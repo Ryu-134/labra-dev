@@ -10,6 +10,10 @@
 	let error = '';
 	let deploy: Deployment | null = null;
 	let logs: DeploymentLog[] = [];
+	$: durationSeconds =
+		deploy && deploy.started_at && deploy.finished_at && deploy.finished_at >= deploy.started_at
+			? deploy.finished_at - deploy.started_at
+			: 0;
 
 	async function loadPage() {
 		loading = true;
@@ -59,6 +63,8 @@
 				<h2>Status</h2>
 				<p><strong>{deploy.status}</strong></p>
 				<p><strong>Trigger:</strong> {deploy.trigger_type}</p>
+				<p><strong>Release:</strong> {deploy.release_id || 'n/a'}</p>
+				<p><strong>Duration:</strong> {durationSeconds > 0 ? `${durationSeconds}s` : 'n/a'}</p>
 				<p><strong>Updated:</strong> {prettyDate(deploy.updated_at)}</p>
 				<p><strong>Site URL:</strong> {deploy.site_url || 'n/a'}</p>
 			</article>
