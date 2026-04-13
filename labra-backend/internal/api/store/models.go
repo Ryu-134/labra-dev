@@ -42,6 +42,25 @@ type DeploymentLog struct {
 	CreatedAt    int64  `json:"created_at"`
 }
 
+type AppEnvVar struct {
+	ID        int64  `json:"id"`
+	AppID     int64  `json:"app_id"`
+	Key       string `json:"key"`
+	Value     string `json:"value,omitempty"`
+	IsSecret  bool   `json:"is_secret"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type AppHealthMetrics struct {
+	AppID         int64 `json:"app_id"`
+	SuccessCount  int64 `json:"success_count"`
+	FailureCount  int64 `json:"failure_count"`
+	LastSuccessAt int64 `json:"last_success_at"`
+	LastFailureAt int64 `json:"last_failure_at"`
+	UpdatedAt     int64 `json:"updated_at"`
+}
+
 type CreateAppInput struct {
 	UserID            int64
 	Name              string
@@ -78,4 +97,16 @@ type CreateDeploymentInput struct {
 	CorrelationID string
 	StartedAt     int64
 	FinishedAt    int64
+}
+
+type CreateAppEnvVarInput struct {
+	Key      string
+	Value    string
+	IsSecret bool
+}
+
+type UpdateAppEnvVarInput struct {
+	Key      string
+	Value    string
+	IsSecret bool
 }
