@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -136,6 +138,7 @@ func GetDeployLogsHandler(w http.ResponseWriter, r *http.Request) {
 func runManualDeployment(deploymentID int64, app store.App) {
 	ctx := context.Background()
 	start := store.UnixNow()
+	triggerType := determineDeploymentTriggerType(ctx, deploymentID, app.UserID)
 
 	_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "running", "", app.SiteURL, start, 0)
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "clone repository")
@@ -146,7 +149,7 @@ func runManualDeployment(deploymentID int64, app store.App) {
 		envVars = nil
 	}
 	deploymentEnv := buildDeploymentEnv(envVars)
-	_ = deploymentEnv // placeholder for Phase 8 worker runtime integration
+	_ = deploymentEnv // placeholder for worker runtime integration in Phase 8
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", describeEnvInjection(envVars))
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "install dependencies")
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "run build")
@@ -157,7 +160,7 @@ func runManualDeployment(deploymentID int64, app store.App) {
 		finish := store.UnixNow()
 		_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "failed", "unsupported build type", "", start, finish)
 		_ = appStore.CreateDeploymentLog(ctx, deploymentID, "error", "deployment failed: unsupported build type")
-		_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "failed", finish)
+		_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "failed", start, finish, triggerType)
 		return
 	}
 
@@ -169,7 +172,23 @@ func runManualDeployment(deploymentID int64, app store.App) {
 	finish := store.UnixNow()
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "deployment completed successfully")
 	_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "succeeded", "", siteURL, start, finish)
-	_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "succeeded", finish)
+
+	release, releaseErr := appStore.CreateReleaseVersion(ctx, store.CreateReleaseVersionInput{
+		AppID:            app.ID,
+		DeploymentID:     deploymentID,
+		ArtifactPath:     buildArtifactPath(app.ID, deploymentID, finish),
+		ArtifactChecksum: fmt.Sprintf("sim-%d-%d", app.ID, deploymentID),
+	})
+	if releaseErr != nil {
+		_ = appStore.CreateDeploymentLog(ctx, deploymentID, "warn", "release snapshot metadata failed to persist")
+	} else {
+		_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", fmt.Sprintf("published release v%d", release.VersionNumber))
+		if err := appStore.ApplyReleaseRetentionPolicy(ctx, app.ID, releaseRetentionLimit(), release.ID); err != nil {
+			_ = appStore.CreateDeploymentLog(ctx, deploymentID, "warn", "release retention policy failed to apply")
+		}
+	}
+
+	_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "succeeded", start, finish, triggerType)
 }
 
 func slugify(in string) string {
@@ -202,4 +221,38 @@ func buildDeploymentEnv(envVars []store.AppEnvVar) map[string]string {
 		env[envVar.Key] = envVar.Value
 	}
 	return env
+}
+
+func releaseRetentionLimit() int {
+	raw := strings.TrimSpace(os.Getenv("RELEASE_RETENTION_LIMIT"))
+	if raw == "" {
+		return 20
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return 20
+	}
+	if v > 200 {
+		return 200
+	}
+	return v
+}
+
+func buildArtifactPath(appID, deploymentID, finishedAt int64) string {
+	if finishedAt <= 0 {
+		finishedAt = store.UnixNow()
+	}
+	return fmt.Sprintf("releases/app-%d/deploy-%d-%d.tgz", appID, deploymentID, finishedAt)
+}
+
+func determineDeploymentTriggerType(ctx context.Context, deploymentID, userID int64) string {
+	dep, err := appStore.GetDeploymentByIDForUser(ctx, deploymentID, userID)
+	if err != nil {
+		return "manual"
+	}
+	v := strings.TrimSpace(strings.ToLower(dep.TriggerType))
+	if v == "" {
+		return "manual"
+	}
+	return v
 }
