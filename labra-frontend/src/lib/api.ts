@@ -39,7 +39,7 @@ export type DeploymentLog = {
 	created_at: number;
 };
 
-export const backendBaseURL = 'http://localhost:8080';
+export const backendBaseURL = import.meta.env.VITE_BACKEND_BASE_URL ?? '/api';
 
 export async function apiGET<T>(path: string, userID: string): Promise<T> {
 	const res = await fetch(`${backendBaseURL}${path}`, {
