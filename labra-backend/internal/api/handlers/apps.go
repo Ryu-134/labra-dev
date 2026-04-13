@@ -320,6 +320,11 @@ func readIDFromPathOrQuery(r *http.Request, base string) (int64, error) {
 	if raw == "" {
 		return 0, fmt.Errorf("id is required")
 	}
+	parts := strings.Split(raw, "/")
+	raw = strings.TrimSpace(parts[0])
+	if raw == "" {
+		return 0, fmt.Errorf("id is required")
+	}
 
 	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || id <= 0 {
