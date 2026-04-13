@@ -8,11 +8,6 @@ import (
 
 	"labra-backend/internal/api/store"
 )
-
-func init() {
-	enqueueEligibleApps = enqueueWebhookDeployments
-}
-
 func enqueueWebhookDeployments(
 	r *http.Request,
 	payload githubPushEvent,

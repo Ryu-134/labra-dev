@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-func init() {
-	dedupeEligibleApps = dedupeEligibleAppsWithLedger
-}
-
 func dedupeEligibleAppsWithLedger(
 	r *http.Request,
 	deliveryID string,

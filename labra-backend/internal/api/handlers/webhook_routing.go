@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-func init() {
-	resolvePushEvent = resolvePushEventWithStore
-}
-
 func resolvePushEventWithStore(r *http.Request, payload githubPushEvent) (webhookResolution, error) {
 	repoFullName := strings.ToLower(strings.TrimSpace(payload.Repository.FullName))
 	if repoFullName == "" {

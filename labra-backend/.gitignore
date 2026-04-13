@@ -33,3 +33,4 @@ go.work.sum
 
 pg_data/
 .postgres/
+cmd/labra.db

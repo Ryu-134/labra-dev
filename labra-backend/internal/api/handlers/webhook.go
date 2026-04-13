@@ -38,10 +38,6 @@ type webhookResolution struct {
 	Reason       string
 }
 
-var resolvePushEvent = resolvePushEventDefault
-var dedupeEligibleApps = dedupeEligibleAppsDefault
-var enqueueEligibleApps = enqueueEligibleAppsDefault
-
 func InitWebhook(secret string) {
 	githubWebhookSecret = strings.TrimSpace(secret)
 }
@@ -88,19 +84,19 @@ func GitHubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolution, err := resolvePushEvent(r, payload)
+	resolution, err := resolvePushEventWithStore(r, payload)
 	if err != nil {
 		writeWebhookError(w, err)
 		return
 	}
 
-	dedupedApps, duplicateCount, err := dedupeEligibleApps(r, deliveryID, eventType, payload, resolution.EligibleApps)
+	dedupedApps, duplicateCount, err := dedupeEligibleAppsWithLedger(r, deliveryID, eventType, payload, resolution.EligibleApps)
 	if err != nil {
 		writeWebhookError(w, err)
 		return
 	}
 
-	triggeredDeployments, err := enqueueEligibleApps(r, payload, dedupedApps)
+	triggeredDeployments, err := enqueueWebhookDeployments(r, payload, dedupedApps)
 	if err != nil {
 		writeWebhookError(w, err)
 		return
@@ -156,29 +152,6 @@ func extractBranch(ref string) (string, bool) {
 	return branch, true
 }
 
-func resolvePushEventDefault(_ *http.Request, payload githubPushEvent) (webhookResolution, error) {
-	repoFullName := strings.ToLower(strings.TrimSpace(payload.Repository.FullName))
-	if repoFullName == "" {
-		return webhookResolution{}, errWebhook("repository.full_name is required")
-	}
-
-	branch, ok := extractBranch(payload.Ref)
-	if !ok {
-		return webhookResolution{
-			RepoFullName: repoFullName,
-			Ignored:      true,
-			Reason:       "ref is not a branch push",
-		}, nil
-	}
-
-	return webhookResolution{
-		RepoFullName: repoFullName,
-		Branch:       branch,
-		Ignored:      true,
-		Reason:       "routing not enabled",
-	}, nil
-}
-
 type webhookErr string
 
 func (e webhookErr) Error() string { return string(e) }
@@ -193,14 +166,6 @@ func writeWebhookError(w http.ResponseWriter, err error) {
 		return
 	}
 	writeJSONError(w, http.StatusInternalServerError, err.Error())
-}
-
-func dedupeEligibleAppsDefault(_ *http.Request, _ string, _ string, _ githubPushEvent, eligibleApps []map[string]any) ([]map[string]any, int, error) {
-	return eligibleApps, 0, nil
-}
-
-func enqueueEligibleAppsDefault(_ *http.Request, _ githubPushEvent, _ []map[string]any) ([]map[string]any, error) {
-	return []map[string]any{}, nil
 }
 
 func mustInt64(v any) (int64, error) {

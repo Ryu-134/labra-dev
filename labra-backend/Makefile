@@ -10,5 +10,8 @@ SERVER_NAME = "Labra-server"
 generate:
 	sqlc generate
 
+run:
+	cd cmd && go run .
 
-.PHONY: generate
+
+.PHONY: generate run
