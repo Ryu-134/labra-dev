@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"labra-backend/internal/api/handlers"
 	"labra-backend/internal/api/routes"
 	"labra-backend/internal/api/services"
 
@@ -72,8 +73,10 @@ func main() {
 	}
 
 	fmt.Println("DB CONNECTED")
+	handlers.InitAppStore(db)
 	routes.HealthRoute(s)
 	routes.Oauth(s)
+	routes.Apps(s)
 
 	// TODO: probably switch this to TLS
 
