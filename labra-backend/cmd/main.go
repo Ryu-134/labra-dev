@@ -23,6 +23,7 @@ const (
 )
 
 var db_url string
+var github_webhook_secret string
 
 func init() {
 	err := godotenv.Load("./../.env")
@@ -33,6 +34,7 @@ func init() {
 	gh_client := os.Getenv("GH_CLIENT_ID")
 	gh_secret := os.Getenv("GH_CLIENT_SECRET")
 	db_url = os.Getenv("DB_URL")
+	github_webhook_secret = os.Getenv("GITHUB_WEBHOOK_SECRET")
 
 	services.InitOauth(gh_client, gh_secret)
 }
@@ -74,9 +76,12 @@ func main() {
 
 	fmt.Println("DB CONNECTED")
 	handlers.InitAppStore(db)
+	handlers.InitWebhook(github_webhook_secret)
 	routes.HealthRoute(s)
 	routes.Oauth(s)
 	routes.Apps(s)
+	routes.Deploy(s)
+	routes.Webhooks(s)
 
 	// TODO: probably switch this to TLS
 
