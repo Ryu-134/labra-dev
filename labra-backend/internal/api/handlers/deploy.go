@@ -140,6 +140,14 @@ func runManualDeployment(deploymentID int64, app store.App) {
 	_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "running", "", app.SiteURL, start, 0)
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "clone repository")
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", fmt.Sprintf("checkout branch %s", app.Branch))
+	envVars, envErr := appStore.ListAppEnvVarsForApp(ctx, app.ID)
+	if envErr != nil {
+		_ = appStore.CreateDeploymentLog(ctx, deploymentID, "warn", "unable to load app env vars; continuing without injected env vars")
+		envVars = nil
+	}
+	deploymentEnv := buildDeploymentEnv(envVars)
+	_ = deploymentEnv // placeholder for Phase 8 worker runtime integration
+	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", describeEnvInjection(envVars))
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "install dependencies")
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "run build")
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "upload static artifacts")
@@ -149,6 +157,7 @@ func runManualDeployment(deploymentID int64, app store.App) {
 		finish := store.UnixNow()
 		_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "failed", "unsupported build type", "", start, finish)
 		_ = appStore.CreateDeploymentLog(ctx, deploymentID, "error", "deployment failed: unsupported build type")
+		_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "failed", finish)
 		return
 	}
 
@@ -160,6 +169,7 @@ func runManualDeployment(deploymentID int64, app store.App) {
 	finish := store.UnixNow()
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "deployment completed successfully")
 	_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "succeeded", "", siteURL, start, finish)
+	_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "succeeded", finish)
 }
 
 func slugify(in string) string {
@@ -170,4 +180,26 @@ func slugify(in string) string {
 	v = strings.ReplaceAll(v, " ", "-")
 	v = strings.ReplaceAll(v, "_", "-")
 	return v
+}
+
+func describeEnvInjection(envVars []store.AppEnvVar) string {
+	if len(envVars) == 0 {
+		return "inject 0 env vars"
+	}
+
+	secretCount := 0
+	for _, envVar := range envVars {
+		if envVar.IsSecret {
+			secretCount++
+		}
+	}
+	return fmt.Sprintf("inject %d env vars (%d secret)", len(envVars), secretCount)
+}
+
+func buildDeploymentEnv(envVars []store.AppEnvVar) map[string]string {
+	env := make(map[string]string, len(envVars))
+	for _, envVar := range envVars {
+		env[envVar.Key] = envVar.Value
+	}
+	return env
 }
