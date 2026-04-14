@@ -6,6 +6,8 @@ on:
       - main
       - phase5-phase7-*
       - phase5-7-*
+      - phase8-*
+      - phase8-queue-*
   pull_request:
 
 jobs:
