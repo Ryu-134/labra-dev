@@ -76,6 +76,10 @@ func main() {
 
 	fmt.Println("DB CONNECTED")
 	handlers.InitAppStore(db)
+	if err := handlers.StartDeploymentQueueWorker(); err != nil {
+		log.Fatalln(err)
+	}
+	defer handlers.StopDeploymentQueueWorker()
 	handlers.InitWebhook(github_webhook_secret)
 	routes.HealthRoute(s)
 	routes.Oauth(s)

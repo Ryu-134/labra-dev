@@ -193,11 +193,23 @@ func CreateRollbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = appStore.CreateDeploymentLog(r.Context(), deployment.ID, "info", fmt.Sprintf("rollback queued to release v%d", targetRelease.VersionNumber))
-
-	go runRollbackDeployment(deployment.ID, app, currentRelease.ID, targetRelease, reason)
+	if err := appStore.CreateDeploymentRollbackPayload(r.Context(), deployment.ID, currentRelease.ID, targetRelease.ID, reason); err != nil {
+		_, _ = appStore.UpdateDeploymentOutcome(r.Context(), deployment.ID, "failed", "unable to persist rollback payload", "queue", false, "", 0, store.UnixNow())
+		_ = appStore.CreateDeploymentLog(r.Context(), deployment.ID, "error", "rollback payload persistence failed")
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist rollback payload")
+		return
+	}
+	job, err := enqueueDeploymentJob(r.Context(), deployment)
+	if err != nil {
+		_, _ = appStore.UpdateDeploymentOutcome(r.Context(), deployment.ID, "failed", "unable to enqueue rollback deployment job", "queue", false, "", 0, store.UnixNow())
+		_ = appStore.CreateDeploymentLog(r.Context(), deployment.ID, "error", "rollback deployment queue enqueue failed")
+		writeJSONError(w, http.StatusInternalServerError, "failed to enqueue rollback deployment job")
+		return
+	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"deployment":        deployment,
+		"job":               job,
 		"from_release_id":   currentRelease.ID,
 		"target_release_id": targetRelease.ID,
 	})
@@ -224,58 +236,4 @@ func resolveCurrentRelease(ctx context.Context, appID, userID int64) (store.Rele
 		return store.ReleaseVersion{}, setErr
 	}
 	return releases[0], nil
-}
-
-func runRollbackDeployment(deploymentID int64, app store.App, fromReleaseID int64, targetRelease store.ReleaseVersion, reason string) {
-	ctx := context.Background()
-	start := store.UnixNow()
-
-	fail := func(msg string) {
-		finish := store.UnixNow()
-		_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "failed", msg, "", start, finish)
-		_ = appStore.CreateDeploymentLog(ctx, deploymentID, "error", fmt.Sprintf("rollback failed: %s", msg))
-		_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "failed", start, finish, "rollback")
-	}
-
-	_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "running", "", app.SiteURL, start, 0)
-	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", fmt.Sprintf("loading release v%d artifact", targetRelease.VersionNumber))
-	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", fmt.Sprintf("switch current release pointer -> %d", targetRelease.ID))
-
-	if err := appStore.SetCurrentReleaseVersionForAppForUser(ctx, app.ID, targetRelease.ID, app.UserID); err != nil {
-		fail("unable to switch release pointer")
-		return
-	}
-
-	if err := appStore.AttachReleaseToDeployment(ctx, deploymentID, targetRelease.ID); err != nil {
-		fail("unable to attach target release to rollback deployment")
-		return
-	}
-
-	if _, err := appStore.CreateRollbackEvent(ctx, store.CreateRollbackEventInput{
-		AppID:         app.ID,
-		UserID:        app.UserID,
-		FromReleaseID: fromReleaseID,
-		ToReleaseID:   targetRelease.ID,
-		DeploymentID:  deploymentID,
-		Reason:        reason,
-	}); err != nil {
-		fail("unable to persist rollback record")
-		return
-	}
-
-	targetURL := strings.TrimSpace(app.SiteURL)
-	if targetURL == "" {
-		targetDep, err := appStore.GetDeploymentByIDForUser(ctx, targetRelease.DeploymentID, app.UserID)
-		if err == nil {
-			targetURL = strings.TrimSpace(targetDep.SiteURL)
-		}
-	}
-	if targetURL == "" {
-		targetURL = fmt.Sprintf("https://%s.preview.labra.local", slugify(app.Name))
-	}
-
-	finish := store.UnixNow()
-	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", fmt.Sprintf("rollback complete: now serving release v%d", targetRelease.VersionNumber))
-	_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "succeeded", "", targetURL, start, finish)
-	_ = appStore.RecordAppDeploymentOutcome(ctx, app.ID, "succeeded", start, finish, "rollback")
 }

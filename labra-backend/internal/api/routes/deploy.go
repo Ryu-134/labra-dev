@@ -11,4 +11,5 @@ func Deploy(s *fuego.Server) {
 	fuego.GetStd(s, "/v1/apps/{id}/deploys", handlers.GetAppDeploysHandler)
 	fuego.GetStd(s, "/v1/deploys/{id}", handlers.GetDeployHandler)
 	fuego.GetStd(s, "/v1/deploys/{id}/logs", handlers.GetDeployLogsHandler)
+	fuego.GetStd(s, "/v1/deploys/{id}/queue", handlers.GetDeployQueueStatusHandler)
 }
