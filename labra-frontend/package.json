@@ -11,7 +11,10 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check .",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"test:smoke": "node --test tests/smoke.route-map.test.mjs",
+		"test:component": "node --test tests/component.shell.test.mjs",
+		"test": "npm run test:smoke && npm run test:component"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",

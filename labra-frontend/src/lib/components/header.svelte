@@ -1,14 +1,23 @@
 <script>
     import GithubLoginButton from '$lib/components/githublogin.svelte';
+
+    const appEnv = import.meta.env.PUBLIC_APP_ENV ?? 'local';
 </script>
 
 <div class="header">
     <a id="logo" href="/">Labra</a>
     <nav>
+        <a href="/dashboard">Dashboard</a>
         <a href="/apps">Apps</a>
+        <a href="/deploys">Deploys</a>
+        <a href="/settings">Settings</a>
+        <a href="/login">Login</a>
     </nav>
-    <div class="login">
-        <GithubLoginButton />
+    <div class="meta">
+        <span class="env">Env: {appEnv}</span>
+        <div class="login">
+            <GithubLoginButton />
+        </div>
     </div>
 </div>
 <hr>
@@ -35,6 +44,7 @@
     }
     nav {
         display: flex;
+        flex-wrap: wrap;
         gap: 1rem;
         margin-right: auto;
     }
@@ -43,8 +53,20 @@
         text-decoration: none;
         font-size: 1.1rem;
     }
-    .login {
+    .meta {
         margin-right: 3vh;
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+    }
+    .env {
+        color: #a3b1db;
+        font-size: 0.9rem;
+        border: 1px solid #3f4565;
+        border-radius: 8px;
+        padding: 0.3rem 0.5rem;
+    }
+    .login {
         display: flex;
         justify-content: center;
     }
