@@ -10,6 +10,24 @@
 		branch: string;
 		deployments: Deployment[];
 	};
+	type ConfigHistoryResponse = {
+		app_id: number;
+		config_versions: {
+			id: number;
+			source: string;
+			config_json: string;
+			created_at: number;
+		}[];
+	};
+	type InfraOutputResponse = {
+		app_id: number;
+		outputs: {
+			bucket_name: string;
+			distribution_id: string;
+			site_url: string;
+			updated_at: number;
+		};
+	};
 
 	export let data: { appID: string };
 
@@ -18,6 +36,8 @@
 	let error = '';
 	let app: App | null = null;
 	let history: HistoryResponse | null = null;
+	let configHistory: ConfigHistoryResponse | null = null;
+	let infraOutputs: InfraOutputResponse | null = null;
 
 	$: latest = history?.deployments?.[0] ?? null;
 
@@ -27,10 +47,14 @@
 		try {
 			app = await apiGET<App>(`/v1/apps/${data.appID}`, userID);
 			history = await apiGET<HistoryResponse>(`/v1/apps/${data.appID}/deploys`, userID);
+			configHistory = await apiGET<ConfigHistoryResponse>(`/v1/apps/${data.appID}/config-history`, userID);
+			infraOutputs = await apiGET<InfraOutputResponse>(`/v1/apps/${data.appID}/infra-outputs`, userID);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'failed to load app details';
 			app = null;
 			history = null;
+			configHistory = null;
+			infraOutputs = null;
 		} finally {
 			loading = false;
 		}
@@ -75,7 +99,27 @@
 				<p><strong>Commit:</strong> {shortSHA(latest?.commit_sha)} {latest?.commit_author ? `by ${latest.commit_author}` : ''}</p>
 				<p><strong>Updated:</strong> {prettyDate(latest?.updated_at)}</p>
 			</article>
+			<article>
+				<h2>Infra Outputs</h2>
+				<p><strong>Bucket:</strong> {infraOutputs?.outputs.bucket_name || 'n/a'}</p>
+				<p><strong>Distribution:</strong> {infraOutputs?.outputs.distribution_id || 'n/a'}</p>
+				<p><strong>Site:</strong> {infraOutputs?.outputs.site_url || 'n/a'}</p>
+				<p><strong>Updated:</strong> {prettyDate(infraOutputs?.outputs.updated_at)}</p>
+			</article>
 		</div>
+
+		<h2>Config History</h2>
+		{#if !configHistory || configHistory.config_versions.length === 0}
+			<p class="muted">No config history recorded yet.</p>
+		{:else}
+			<ul class="config-history">
+				{#each configHistory.config_versions as cfg}
+					<li>
+						<strong>{cfg.source}</strong> at {prettyDate(cfg.created_at)}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 
 		{#if history.deployments.length === 0}
 			<p class="muted">No deployments yet.</p>
@@ -117,6 +161,9 @@
 	button { background: var(--text-color); color: var(--crust); border: 0; border-radius: 8px; padding: 0.55rem 0.8rem; cursor: pointer; }
 	.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
 	article { background: #202236; border: 1px solid #2e314f; border-radius: 12px; padding: 1rem; }
+	.config-history { list-style: none; padding: 0; margin: 0 0 1rem; background: #1f2135; border: 1px solid #2f3357; border-radius: 10px; }
+	.config-history li { padding: 0.6rem 0.8rem; border-bottom: 1px solid #2f3357; }
+	.config-history li:last-child { border-bottom: 0; }
 	table { width: 100%; border-collapse: collapse; background: #1f2135; border-radius: 10px; overflow: hidden; }
 	th, td { text-align: left; padding: 0.6rem; border-bottom: 1px solid #2f3357; }
 	th { background: #282b45; }

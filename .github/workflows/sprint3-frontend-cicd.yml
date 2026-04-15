@@ -1,0 +1,49 @@
+name: Sprint3 Frontend CI/CD
+
+on:
+  pull_request:
+    paths:
+      - 'labra-frontend/**'
+      - '.github/workflows/sprint3-frontend-cicd.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'labra-frontend/**'
+      - '.github/workflows/sprint3-frontend-cicd.yml'
+
+jobs:
+  frontend-ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: labra-frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: labra-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type checks
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build app
+        run: npm run build
+
+      - name: Upload built frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: labra-frontend-dist
+          path: labra-frontend/.svelte-kit/output
+          if-no-files-found: error

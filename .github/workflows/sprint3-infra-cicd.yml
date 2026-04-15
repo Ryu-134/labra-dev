@@ -1,0 +1,72 @@
+name: Sprint3 Infra CI/CD
+
+on:
+  pull_request:
+    paths:
+      - 'labra-infra/**'
+      - '.github/workflows/sprint3-infra-cicd.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'labra-infra/**'
+      - '.github/workflows/sprint3-infra-cicd.yml'
+
+jobs:
+  infra-validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: labra-infra/env/dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive ../..
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+  infra-plan-oidc:
+    runs-on: ubuntu-latest
+    needs: infra-validate
+    if: ${{ vars.AWS_ROLE_TO_ASSUME != '' }}
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: labra-infra/env/dev
+    env:
+      AWS_REGION: us-west-1
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false
+
+      - name: Terraform plan
+        run: terraform plan -input=false -lock=false -refresh=false
