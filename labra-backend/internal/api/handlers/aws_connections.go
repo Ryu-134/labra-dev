@@ -8,12 +8,13 @@ import (
 	"strings"
 
 	"labra-backend/internal/api/auth"
+	awsverify "labra-backend/internal/api/aws"
 	"labra-backend/internal/api/store"
 )
 
 var (
-	roleARNPattern = regexp.MustCompile(`^arn:aws:iam::([0-9]{12}):role\/[A-Za-z0-9+=,.@_\/-]+$`)
-	regionPattern  = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
+	regionPattern                                   = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
+	assumeRoleVerifier awsverify.AssumeRoleVerifier = awsverify.LocalAssumeRoleVerifier{}
 )
 
 type upsertAWSConnectionRequest struct {
@@ -21,6 +22,14 @@ type upsertAWSConnectionRequest struct {
 	ExternalID string `json:"external_id"`
 	Region     string `json:"region"`
 	AccountID  string `json:"account_id,omitempty"`
+}
+
+func InitAssumeRoleVerifier(v awsverify.AssumeRoleVerifier) {
+	if v == nil {
+		assumeRoleVerifier = awsverify.LocalAssumeRoleVerifier{}
+		return
+	}
+	assumeRoleVerifier = v
 }
 
 func UpsertAWSConnectionHandler(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +62,39 @@ func UpsertAWSConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	verifiedAccountID, err := assumeRoleVerifier.Verify(r.Context(), awsverify.AssumeRoleInput{
+		RoleARN:    normalized.RoleARN,
+		ExternalID: normalized.ExternalID,
+		Region:     normalized.Region,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "unable to validate AssumeRole configuration")
+		_ = appStore.CreateAuditEvent(r.Context(), store.AuditEventInput{
+			ActorUserID: userID,
+			EventType:   "aws_connection.assume_role_verify",
+			TargetType:  "aws_connection",
+			Status:      "failed",
+			Message:     "unable to validate AssumeRole configuration",
+		})
+		return
+	}
+
+	if normalized.AccountID == "" {
+		normalized.AccountID = verifiedAccountID
+	}
+	if normalized.AccountID != verifiedAccountID {
+		writeJSONError(w, http.StatusBadRequest, "account_id does not match role ARN account")
+		_ = appStore.CreateAuditEvent(r.Context(), store.AuditEventInput{
+			ActorUserID: userID,
+			EventType:   "aws_connection.assume_role_verify",
+			TargetType:  "aws_connection",
+			Status:      "failed",
+			Message:     "account_id does not match role ARN account",
+		})
+		return
+	}
+
 	normalized.UserID = userID
 	normalized.Status = "validated"
 	normalized.LastValidatedAt = store.UnixNow()
@@ -123,10 +165,6 @@ func normalizeAWSConnection(req upsertAWSConnectionRequest) (store.UpsertAWSConn
 	if roleARN == "" {
 		return store.UpsertAWSConnectionInput{}, fmt.Errorf("role_arn is required")
 	}
-	matches := roleARNPattern.FindStringSubmatch(roleARN)
-	if len(matches) != 2 {
-		return store.UpsertAWSConnectionInput{}, fmt.Errorf("role_arn must match arn:aws:iam::<account-id>:role/<role-name>")
-	}
 	if externalID == "" {
 		return store.UpsertAWSConnectionInput{}, fmt.Errorf("external_id is required")
 	}
@@ -136,10 +174,7 @@ func normalizeAWSConnection(req upsertAWSConnectionRequest) (store.UpsertAWSConn
 	if !regionPattern.MatchString(region) {
 		return store.UpsertAWSConnectionInput{}, fmt.Errorf("region must look like us-west-2")
 	}
-	if accountID == "" {
-		accountID = matches[1]
-	}
-	if len(accountID) != 12 || strings.Trim(accountID, "0123456789") != "" {
+	if accountID != "" && (len(accountID) != 12 || strings.Trim(accountID, "0123456789") != "") {
 		return store.UpsertAWSConnectionInput{}, fmt.Errorf("account_id must be a 12-digit AWS account number")
 	}
 

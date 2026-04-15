@@ -7,8 +7,8 @@ import (
 )
 
 func Apps(s *fuego.Server) {
-	fuego.PostStd(s, "/v1/apps", handlers.CreateAppHandler)
-	fuego.GetStd(s, "/v1/apps", handlers.ListAppsHandler)
-	fuego.GetStd(s, "/v1/apps/{id}", handlers.GetAppHandler)
-	fuego.PatchStd(s, "/v1/apps/{id}", handlers.PatchAppHandler)
+	fuego.PostStd(s, "/v1/apps", withAuth(handlers.CreateAppHandler))
+	fuego.GetStd(s, "/v1/apps", withAuth(handlers.ListAppsHandler))
+	fuego.GetStd(s, "/v1/apps/{id}", withAuth(handlers.GetAppHandler))
+	fuego.PatchStd(s, "/v1/apps/{id}", withAuth(handlers.PatchAppHandler))
 }

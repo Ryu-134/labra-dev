@@ -55,6 +55,32 @@ type AWSConnection struct {
 	UpdatedAt       int64  `json:"updated_at"`
 }
 
+type PlatformUser struct {
+	ID        int64  `json:"id"`
+	Email     string `json:"email,omitempty"`
+	Status    string `json:"status"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type AuthIdentity struct {
+	ID        int64  `json:"id"`
+	UserID    int64  `json:"user_id"`
+	Provider  string `json:"provider"`
+	Subject   string `json:"subject"`
+	Email     string `json:"email,omitempty"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type AuthSession struct {
+	SessionID string `json:"session_id"`
+	UserID    int64  `json:"user_id"`
+	ExpiresAt int64  `json:"expires_at"`
+	CreatedAt int64  `json:"created_at"`
+	RevokedAt int64  `json:"revoked_at,omitempty"`
+}
+
 type CreateAppInput struct {
 	UserID            int64
 	Name              string
@@ -111,4 +137,22 @@ type AuditEventInput struct {
 	Status      string
 	Message     string
 	Metadata    string
+}
+
+type CreatePlatformUserInput struct {
+	Email  string
+	Status string
+}
+
+type UpsertAuthIdentityInput struct {
+	UserID   int64
+	Provider string
+	Subject  string
+	Email    string
+}
+
+type CreateAuthSessionInput struct {
+	SessionID string
+	UserID    int64
+	ExpiresAt int64
 }

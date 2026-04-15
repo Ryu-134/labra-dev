@@ -2,10 +2,13 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -20,10 +23,12 @@ var (
 )
 
 type Principal struct {
-	UserID int64    `json:"user_id"`
-	Sub    string   `json:"sub"`
-	Email  string   `json:"email,omitempty"`
-	Roles  []string `json:"roles,omitempty"`
+	UserID    int64    `json:"user_id"`
+	Sub       string   `json:"sub"`
+	Email     string   `json:"email,omitempty"`
+	Roles     []string `json:"roles,omitempty"`
+	SessionID string   `json:"session_id,omitempty"`
+	ExpiresAt int64    `json:"expires_at,omitempty"`
 }
 
 type Validator interface {
@@ -36,9 +41,24 @@ type HMACValidator struct {
 	Secret   []byte
 }
 
+type TokenIssuer struct {
+	Issuer   string
+	Audience string
+	Secret   []byte
+	TTL      time.Duration
+}
+
 func (v HMACValidator) ValidateToken(_ context.Context, rawToken string) (Principal, error) {
 	if len(v.Secret) == 0 {
 		return Principal{}, errors.New("jwt secret is not configured")
+	}
+
+	parseOptions := []jwt.ParserOption{}
+	if strings.TrimSpace(v.Issuer) != "" {
+		parseOptions = append(parseOptions, jwt.WithIssuer(v.Issuer))
+	}
+	if strings.TrimSpace(v.Audience) != "" {
+		parseOptions = append(parseOptions, jwt.WithAudience(v.Audience))
 	}
 
 	tok, err := jwt.Parse(rawToken, func(token *jwt.Token) (any, error) {
@@ -46,7 +66,7 @@ func (v HMACValidator) ValidateToken(_ context.Context, rawToken string) (Princi
 			return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
 		}
 		return v.Secret, nil
-	}, jwt.WithIssuer(v.Issuer), jwt.WithAudience(v.Audience))
+	}, parseOptions...)
 	if err != nil {
 		return Principal{}, err
 	}
@@ -58,23 +78,70 @@ func (v HMACValidator) ValidateToken(_ context.Context, rawToken string) (Princi
 
 	sub, _ := claims["sub"].(string)
 	email, _ := claims["email"].(string)
+	sessionID, _ := claims["session_id"].(string)
+	expiresAt := extractExpiry(claims)
+
 	uid, err := extractUserID(claims)
 	if err != nil {
 		return Principal{}, err
 	}
 
 	return Principal{
-		UserID: uid,
-		Sub:    strings.TrimSpace(sub),
-		Email:  strings.TrimSpace(email),
-		Roles:  extractRoles(claims),
+		UserID:    uid,
+		Sub:       strings.TrimSpace(sub),
+		Email:     strings.TrimSpace(email),
+		Roles:     extractRoles(claims),
+		SessionID: strings.TrimSpace(sessionID),
+		ExpiresAt: expiresAt,
 	}, nil
+}
+
+func (i TokenIssuer) MintSessionToken(userID int64, sub, email string, roles []string, sessionID string) (string, int64, error) {
+	if len(i.Secret) == 0 {
+		return "", 0, errors.New("token issuer secret is not configured")
+	}
+	if userID <= 0 {
+		return "", 0, errors.New("user_id must be positive")
+	}
+
+	ttl := i.TTL
+	if ttl <= 0 {
+		ttl = 12 * time.Hour
+	}
+	expiresAt := time.Now().Add(ttl).Unix()
+
+	claims := jwt.MapClaims{
+		"iss":        i.Issuer,
+		"aud":        i.Audience,
+		"sub":        strings.TrimSpace(sub),
+		"user_id":    userID,
+		"email":      strings.TrimSpace(email),
+		"roles":      roles,
+		"session_id": strings.TrimSpace(sessionID),
+		"iat":        time.Now().Unix(),
+		"exp":        expiresAt,
+	}
+
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	raw, err := tok.SignedString(i.Secret)
+	if err != nil {
+		return "", 0, err
+	}
+	return raw, expiresAt, nil
+}
+
+func GenerateSessionID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("sess-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
 }
 
 func RequireAuth(v Validator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			rawToken, err := readBearerToken(r.Header.Get("Authorization"))
+			rawToken, err := ParseBearerToken(r.Header.Get("Authorization"))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
@@ -126,11 +193,15 @@ func PrincipalFromContext(ctx context.Context) (Principal, bool) {
 	return principal, ok
 }
 
+func WithPrincipal(ctx context.Context, principal Principal) context.Context {
+	return withPrincipal(ctx, principal)
+}
+
 func withPrincipal(ctx context.Context, principal Principal) context.Context {
 	return context.WithValue(ctx, principalContextKey, principal)
 }
 
-func readBearerToken(header string) (string, error) {
+func ParseBearerToken(header string) (string, error) {
 	raw := strings.TrimSpace(header)
 	if raw == "" {
 		return "", ErrMissingAuthHeader
@@ -149,7 +220,7 @@ func readBearerToken(header string) (string, error) {
 func extractUserID(claims jwt.MapClaims) (int64, error) {
 	rawUserID, ok := claims["user_id"]
 	if !ok {
-		return 0, errors.New("user_id claim is required")
+		return 0, nil
 	}
 
 	switch v := rawUserID.(type) {
@@ -174,9 +245,34 @@ func extractUserID(claims jwt.MapClaims) (int64, error) {
 	}
 }
 
+func extractExpiry(claims jwt.MapClaims) int64 {
+	raw, ok := claims["exp"]
+	if !ok {
+		return 0
+	}
+	switch v := raw.(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	case string:
+		n, err := parsePositiveInt(v)
+		if err != nil {
+			return 0
+		}
+		return n
+	default:
+		return 0
+	}
+}
+
 func parsePositiveInt(raw string) (int64, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, errors.New("invalid integer")
+	}
 	var id int64
-	for _, ch := range strings.TrimSpace(raw) {
+	for _, ch := range trimmed {
 		if ch < '0' || ch > '9' {
 			return 0, errors.New("invalid integer")
 		}

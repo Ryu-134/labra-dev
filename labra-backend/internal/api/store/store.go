@@ -333,6 +333,128 @@ func (s *Store) CreateAuditEvent(ctx context.Context, in AuditEventInput) error 
 	return err
 }
 
+func (s *Store) CreatePlatformUser(ctx context.Context, in CreatePlatformUserInput) (PlatformUser, error) {
+	status := strings.TrimSpace(in.Status)
+	if status == "" {
+		status = "active"
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		INSERT INTO platform_users (email, status, created_at, updated_at)
+		VALUES (?, ?, unixepoch(), unixepoch())
+		RETURNING id, COALESCE(email, ''), status, created_at, updated_at
+	`, nullIfEmpty(in.Email), status)
+
+	var out PlatformUser
+	if err := row.Scan(&out.ID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		return PlatformUser{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) GetPlatformUserByID(ctx context.Context, userID int64) (PlatformUser, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, COALESCE(email, ''), status, created_at, updated_at
+		FROM platform_users
+		WHERE id = ?
+	`, userID)
+
+	var out PlatformUser
+	if err := row.Scan(&out.ID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return PlatformUser{}, ErrNotFound
+		}
+		return PlatformUser{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) GetPlatformUserByIdentity(ctx context.Context, provider, subject string) (PlatformUser, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT u.id, COALESCE(u.email, ''), u.status, u.created_at, u.updated_at
+		FROM platform_users u
+		INNER JOIN auth_identities ai ON ai.user_id = u.id
+		WHERE ai.provider = ? AND ai.subject = ?
+	`, strings.TrimSpace(provider), strings.TrimSpace(subject))
+
+	var out PlatformUser
+	if err := row.Scan(&out.ID, &out.Email, &out.Status, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return PlatformUser{}, ErrNotFound
+		}
+		return PlatformUser{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) UpsertAuthIdentity(ctx context.Context, in UpsertAuthIdentityInput) (AuthIdentity, error) {
+	row := s.db.QueryRowContext(ctx, `
+		INSERT INTO auth_identities (user_id, provider, subject, email, created_at, updated_at)
+		VALUES (?, ?, ?, ?, unixepoch(), unixepoch())
+		ON CONFLICT(provider, subject) DO UPDATE SET
+			user_id = excluded.user_id,
+			email = excluded.email,
+			updated_at = unixepoch()
+		RETURNING id, user_id, provider, subject, COALESCE(email, ''), created_at, updated_at
+	`, in.UserID, strings.TrimSpace(in.Provider), strings.TrimSpace(in.Subject), nullIfEmpty(in.Email))
+
+	var out AuthIdentity
+	if err := row.Scan(&out.ID, &out.UserID, &out.Provider, &out.Subject, &out.Email, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		return AuthIdentity{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) CreateAuthSession(ctx context.Context, in CreateAuthSessionInput) (AuthSession, error) {
+	row := s.db.QueryRowContext(ctx, `
+		INSERT INTO auth_sessions (session_id, user_id, expires_at, created_at)
+		VALUES (?, ?, ?, unixepoch())
+		RETURNING session_id, user_id, expires_at, created_at, COALESCE(revoked_at, 0)
+	`, in.SessionID, in.UserID, in.ExpiresAt)
+
+	var out AuthSession
+	if err := row.Scan(&out.SessionID, &out.UserID, &out.ExpiresAt, &out.CreatedAt, &out.RevokedAt); err != nil {
+		return AuthSession{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) GetAuthSessionByID(ctx context.Context, sessionID string) (AuthSession, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT session_id, user_id, expires_at, created_at, COALESCE(revoked_at, 0)
+		FROM auth_sessions
+		WHERE session_id = ?
+	`, strings.TrimSpace(sessionID))
+
+	var out AuthSession
+	if err := row.Scan(&out.SessionID, &out.UserID, &out.ExpiresAt, &out.CreatedAt, &out.RevokedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return AuthSession{}, ErrNotFound
+		}
+		return AuthSession{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) RevokeAuthSession(ctx context.Context, sessionID string) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE auth_sessions
+		SET revoked_at = unixepoch()
+		WHERE session_id = ? AND revoked_at IS NULL
+	`, strings.TrimSpace(sessionID))
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func nullIfEmpty(v string) any {
 	if strings.TrimSpace(v) == "" {
 		return nil

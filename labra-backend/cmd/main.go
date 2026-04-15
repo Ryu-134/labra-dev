@@ -5,7 +5,11 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strings"
+	"time"
 
+	"labra-backend/internal/api/auth"
+	awsverify "labra-backend/internal/api/aws"
 	"labra-backend/internal/api/config"
 	"labra-backend/internal/api/handlers"
 	"labra-backend/internal/api/middleware"
@@ -49,6 +53,20 @@ func main() {
 	handlers.InitAppStore(db)
 	handlers.InitWebhook(cfg.GitHubWebhookSecret)
 	handlers.InitReadiness(db.PingContext)
+	handlers.InitAssumeRoleVerifier(awsverify.LocalAssumeRoleVerifier{})
+
+	validator := auth.HMACValidator{
+		Issuer:   strings.TrimSpace(cfg.JWTIssuer),
+		Audience: strings.TrimSpace(cfg.JWTAudience),
+		Secret:   []byte(strings.TrimSpace(cfg.JWTSigningSecret)),
+	}
+	routes.InitAuthMiddleware(validator)
+	handlers.InitAuthRuntime(validator, auth.TokenIssuer{
+		Issuer:   strings.TrimSpace(cfg.JWTIssuer),
+		Audience: strings.TrimSpace(cfg.JWTAudience),
+		Secret:   []byte(strings.TrimSpace(cfg.JWTSigningSecret)),
+		TTL:      12 * time.Hour,
+	})
 
 	s := fuego.NewServer(
 		fuego.WithAddr(cfg.ListenAddress()),
@@ -57,9 +75,11 @@ func main() {
 
 	routes.HealthRoute(s)
 	routes.Oauth(s)
+	routes.AuthSessionRoutes(s)
 	routes.AWSConnections(s)
 	routes.Apps(s)
 	routes.Deploy(s)
+	routes.SystemRoutes(s)
 	routes.Webhooks(s)
 
 	logger.Info("server starting", "addr", cfg.ListenAddress(), "env", cfg.Environment)

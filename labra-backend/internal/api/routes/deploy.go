@@ -7,8 +7,8 @@ import (
 )
 
 func Deploy(s *fuego.Server) {
-	fuego.PostStd(s, "/v1/apps/{id}/deploy", handlers.CreateDeployHandler)
-	fuego.GetStd(s, "/v1/apps/{id}/deploys", handlers.GetAppDeploysHandler)
-	fuego.GetStd(s, "/v1/deploys/{id}", handlers.GetDeployHandler)
-	fuego.GetStd(s, "/v1/deploys/{id}/logs", handlers.GetDeployLogsHandler)
+	fuego.PostStd(s, "/v1/apps/{id}/deploy", withAuth(handlers.CreateDeployHandler))
+	fuego.GetStd(s, "/v1/apps/{id}/deploys", withAuth(handlers.GetAppDeploysHandler))
+	fuego.GetStd(s, "/v1/deploys/{id}", withAuth(handlers.GetDeployHandler))
+	fuego.GetStd(s, "/v1/deploys/{id}/logs", withAuth(handlers.GetDeployLogsHandler))
 }
