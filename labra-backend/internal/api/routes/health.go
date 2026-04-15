@@ -8,4 +8,5 @@ import (
 
 func HealthRoute(s *fuego.Server) {
 	fuego.GetStd(s, "/health", handlers.HandleHealth)
+	fuego.GetStd(s, "/ready", handlers.HandleReadiness)
 }

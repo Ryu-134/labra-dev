@@ -2,11 +2,13 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
+	"log/slog"
 	"os"
 
+	"labra-backend/internal/api/config"
 	"labra-backend/internal/api/handlers"
+	"labra-backend/internal/api/middleware"
 	"labra-backend/internal/api/routes"
 	"labra-backend/internal/api/services"
 
@@ -17,74 +19,70 @@ import (
 	"github.com/lpernett/godotenv"
 )
 
-const (
-	PORT = "8080"
-	HOST = "localhost"
-)
+func main() {
+	_ = godotenv.Load("../.env", ".env")
 
-var db_url string
-var github_webhook_secret string
-
-func init() {
-	err := godotenv.Load("./../.env")
+	cfg, err := config.LoadFromEnv()
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalf("invalid configuration: %v", err)
 	}
 
-	gh_client := os.Getenv("GH_CLIENT_ID")
-	gh_secret := os.Getenv("GH_CLIENT_SECRET")
-	db_url = os.Getenv("DB_URL")
-	github_webhook_secret = os.Getenv("GITHUB_WEBHOOK_SECRET")
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	slog.SetDefault(logger)
 
-	services.InitOauth(gh_client, gh_secret)
-}
+	if cfg.GHClientID != "" && cfg.GHClientSecret != "" {
+		services.InitOauth(cfg.GHClientID, cfg.GHClientSecret)
+	} else {
+		logger.Warn("GitHub OAuth is not configured; /v1/login and /v1/callback will not work")
+	}
 
-func main() {
-	listenOn := HOST + ":" + PORT
-
-	s := fuego.NewServer(
-		fuego.WithAddr(listenOn),
-	)
-
-	// -- setup db --
-
-	db, err := sql.Open("sqlite3", db_url)
+	db, err := sql.Open("sqlite3", cfg.DBURL)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
 
-	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
-	if err != nil {
-		log.Fatalln(err)
+	if err := runMigrations(db); err != nil {
+		log.Fatalf("run migrations: %v", err)
 	}
 
-	// maybe change this path later
+	handlers.InitAppStore(db)
+	handlers.InitWebhook(cfg.GitHubWebhookSecret)
+	handlers.InitReadiness(db.PingContext)
+
+	s := fuego.NewServer(
+		fuego.WithAddr(cfg.ListenAddress()),
+	)
+	fuego.Use(s, middleware.RequestContext(logger))
+
+	routes.HealthRoute(s)
+	routes.Oauth(s)
+	routes.AWSConnections(s)
+	routes.Apps(s)
+	routes.Deploy(s)
+	routes.Webhooks(s)
+
+	logger.Info("server starting", "addr", cfg.ListenAddress(), "env", cfg.Environment)
+	s.Run()
+}
+
+func runMigrations(db *sql.DB) error {
+	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
+	if err != nil {
+		return err
+	}
+
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://../sql/migrations",
 		"sqlite3",
 		driver,
 	)
-
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		log.Fatalln(err)
+		return err
 	}
-
-	fmt.Println("DB CONNECTED")
-	handlers.InitAppStore(db)
-	handlers.InitWebhook(github_webhook_secret)
-	routes.HealthRoute(s)
-	routes.Oauth(s)
-	routes.Apps(s)
-	routes.Deploy(s)
-	routes.Webhooks(s)
-
-	// TODO: probably switch this to TLS
-
-	fmt.Println("Server starting on :", listenOn)
-	s.Run()
+	return nil
 }

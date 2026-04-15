@@ -246,6 +246,7 @@ func setupPhase4TestDB(t *testing.T) *sql.DB {
 
 	InitAppStore(db)
 	InitWebhook("test-secret")
+	runDeploymentAsync = false
 
 	return db
 }

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"labra-backend/internal/api/auth"
 	"labra-backend/internal/api/store"
 )
 
@@ -286,6 +287,10 @@ func mergeAppUpdate(current store.App, req updateAppRequest) (store.UpdateAppInp
 }
 
 func readUserID(r *http.Request) (int64, bool) {
+	if principal, ok := auth.PrincipalFromContext(r.Context()); ok && principal.UserID > 0 {
+		return principal.UserID, true
+	}
+
 	v := strings.TrimSpace(r.Header.Get("X-User-ID"))
 	if v == "" {
 		v = strings.TrimSpace(r.URL.Query().Get("user_id"))

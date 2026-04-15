@@ -42,6 +42,19 @@ type DeploymentLog struct {
 	CreatedAt    int64  `json:"created_at"`
 }
 
+type AWSConnection struct {
+	ID              int64  `json:"id"`
+	UserID          int64  `json:"user_id"`
+	RoleARN         string `json:"role_arn"`
+	ExternalID      string `json:"external_id"`
+	Region          string `json:"region"`
+	AccountID       string `json:"account_id"`
+	Status          string `json:"status"`
+	LastValidatedAt int64  `json:"last_validated_at,omitempty"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+}
+
 type CreateAppInput struct {
 	UserID            int64
 	Name              string
@@ -78,4 +91,24 @@ type CreateDeploymentInput struct {
 	CorrelationID string
 	StartedAt     int64
 	FinishedAt    int64
+}
+
+type UpsertAWSConnectionInput struct {
+	UserID          int64
+	RoleARN         string
+	ExternalID      string
+	Region          string
+	AccountID       string
+	Status          string
+	LastValidatedAt int64
+}
+
+type AuditEventInput struct {
+	ActorUserID int64
+	EventType   string
+	TargetType  string
+	TargetID    string
+	Status      string
+	Message     string
+	Metadata    string
 }

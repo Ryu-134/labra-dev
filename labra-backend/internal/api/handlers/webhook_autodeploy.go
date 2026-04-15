@@ -8,6 +8,7 @@ import (
 
 	"labra-backend/internal/api/store"
 )
+
 func enqueueWebhookDeployments(
 	r *http.Request,
 	payload githubPushEvent,
@@ -56,7 +57,7 @@ func enqueueWebhookDeployments(
 		}
 
 		_ = appStore.CreateDeploymentLog(r.Context(), deployment.ID, "info", "deployment queued by webhook trigger")
-		go runManualDeployment(deployment.ID, app)
+		triggerDeployment(deployment.ID, app)
 
 		triggered = append(triggered, map[string]any{
 			"app_id":        app.ID,

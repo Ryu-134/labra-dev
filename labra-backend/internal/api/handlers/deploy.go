@@ -11,6 +11,8 @@ import (
 	"labra-backend/internal/api/store"
 )
 
+var runDeploymentAsync = true
+
 func CreateDeployHandler(w http.ResponseWriter, r *http.Request) {
 	if appStore == nil {
 		writeJSONError(w, http.StatusInternalServerError, "store not initialized")
@@ -55,7 +57,7 @@ func CreateDeployHandler(w http.ResponseWriter, r *http.Request) {
 
 	_ = appStore.CreateDeploymentLog(r.Context(), deployment.ID, "info", "deployment queued by manual trigger")
 
-	go runManualDeployment(deployment.ID, app)
+	triggerDeployment(deployment.ID, app)
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"deployment": deployment,
@@ -160,6 +162,14 @@ func runManualDeployment(deploymentID int64, app store.App) {
 	finish := store.UnixNow()
 	_ = appStore.CreateDeploymentLog(ctx, deploymentID, "info", "deployment completed successfully")
 	_, _ = appStore.UpdateDeploymentStatus(ctx, deploymentID, "succeeded", "", siteURL, start, finish)
+}
+
+func triggerDeployment(deploymentID int64, app store.App) {
+	if runDeploymentAsync {
+		go runManualDeployment(deploymentID, app)
+		return
+	}
+	runManualDeployment(deploymentID, app)
 }
 
 func slugify(in string) string {
